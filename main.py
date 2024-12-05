@@ -5,6 +5,12 @@ from typing import Dict, List, Optional
 import joblib
 import boto3
 import os
+import sys
+from pathlib import Path
+
+# Add the current directory to Python path
+sys.path.append(str(Path(__file__).parent))
+
 from loan_guidance import AdvancedLoanGuidanceSystem
 
 app = FastAPI(
@@ -41,6 +47,9 @@ s3_client = boto3.client(
     region_name=os.getenv('AWS_DEFAULT_REGION')
 )
 
+# Global variable for guidance system
+guidance_system = None
+
 def load_model():
     try:
         # Download model from S3
@@ -52,6 +61,7 @@ def load_model():
         return joblib.load('/tmp/model.joblib')
     except Exception as e:
         print(f"Error loading model from S3: {e}")
+        # Initialize a new model if loading fails
         return AdvancedLoanGuidanceSystem()
 
 # Load model on startup
@@ -67,6 +77,8 @@ async def root():
 @app.post("/analyze-loan")
 async def analyze_loan(request: LoanRequest):
     try:
+        if guidance_system is None:
+            guidance_system = AdvancedLoanGuidanceSystem()
         guidance = guidance_system.generate_comprehensive_guidance(request.dict())
         return guidance
     except Exception as e:
