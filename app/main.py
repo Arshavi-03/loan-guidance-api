@@ -6,6 +6,8 @@ import joblib
 import boto3
 import os
 import time
+import pandas as pd
+import numpy as np
 from app.loan_guidance import AdvancedLoanGuidanceSystem
 
 app = FastAPI()
@@ -28,10 +30,38 @@ class LoanRequest(BaseModel):
     borrower_type: str
     sector_data: Dict
     payment_history: List[Dict] = []
+    loan_status: str  # Required field as per model
 
 # Global variables
 guidance_system = None
 model_loading = False
+
+def initialize_default_model():
+    """Initialize model with default training data"""
+    model = AdvancedLoanGuidanceSystem()
+    
+    # Create minimal training data matching your training script
+    train_data = pd.DataFrame([{
+        'monthly_income': 5000,
+        'loan_amount': 50000,
+        'interest_rate': 10,
+        'loan_term_months': 24,
+        'credit_score': 700,
+        'age': 35,
+        'borrower_type': 'business',
+        'loan_status': 'Charged Off',  # Matches your training data
+        'sector_data': {'business': {'years': 5, 'type': 'retail'}},
+        'payment_history': []
+    }])
+    
+    # Process exactly as in your training script
+    processed_data = model.preprocess_data(train_data)
+    X = model.prepare_features(processed_data)
+    y_risk = (processed_data['loan_status'] == 'Charged Off').astype(int)
+    y_payment = train_data['loan_amount'] / train_data['loan_term_months']
+    
+    model.train_models(X, y_risk, y_payment)
+    return model
 
 def get_model():
     """Lazy load the model only when needed"""
@@ -46,9 +76,7 @@ def get_model():
     try:
         model_loading = True
         print("Initializing new model instance...")
-        guidance_system = AdvancedLoanGuidanceSystem()
         
-        # Try to load from S3 if available
         try:
             print("Attempting to load model from S3...")
             s3_client = boto3.client(
@@ -69,9 +97,11 @@ def get_model():
                 print("Successfully loaded model from S3")
             else:
                 print("Loaded object is not an AdvancedLoanGuidanceSystem instance")
+                guidance_system = initialize_default_model()
         except Exception as e:
             print(f"Warning: Could not load model from S3: {e}")
-            print("Using default model initialization")
+            print("Initializing default model...")
+            guidance_system = initialize_default_model()
             
         return guidance_system
     except Exception as e:
@@ -98,6 +128,7 @@ async def analyze_loan(request: LoanRequest):
         guidance = model.generate_comprehensive_guidance(request.dict())
         return guidance
     except Exception as e:
+        print(f"Error processing request: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/health")
