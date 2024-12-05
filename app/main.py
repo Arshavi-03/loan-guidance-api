@@ -9,8 +9,9 @@ import os
 import logging
 from typing import Dict, List
 import pandas as pd
-from loan_guidance import AdvancedLoanGuidanceSystem  # Your original model class
+from .loan_guidance import AdvancedLoanGuidanceSystem  # Changed to relative import
 
+# Rest of your code stays exactly the same...
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
