@@ -7,6 +7,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 import os
+from xgboost import XGBClassifier, XGBRegressor
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -23,35 +24,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Create and train the model with minimal data
-def init_model():
-    model = AdvancedLoanGuidanceSystem()
-    # Create minimal training data
-    train_data = pd.DataFrame({
-        'monthly_income': [5000.0],
-        'loan_amount': [50000.0],
-        'interest_rate': [5.5],
-        'loan_term_months': [36],
-        'credit_score': [720],
-        'age': [30],
-        'borrower_type': ['business'],
-        'sector_data': [str({'business': {'years': 5, 'type': 'retail'}})],
-        'payment_history': ['[]'],
-        'loan_status': ['Current']
-    })
-    
-    # Initialize the models with minimal training
-    processed = model.preprocess_data(train_data)
-    features = processed[['monthly_income', 'loan_amount', 'interest_rate', 
-                         'loan_term_months', 'credit_score', 'age']].values
-    model.risk_model = XGBClassifier(n_estimators=1)
-    model.payment_predictor = XGBRegressor(n_estimators=1)
-    model.risk_model.fit(features, np.array([0]))
-    model.payment_predictor.fit(features, np.array([1000.0]))
-    return model
-
-guidance_system = init_model()
-
 class LoanRequest(BaseModel):
     monthly_income: float = Field(..., gt=0)
     loan_amount: float = Field(..., gt=0)
@@ -63,6 +35,9 @@ class LoanRequest(BaseModel):
     sector_data: Dict[str, Dict[str, Union[str, int, float]]]
     payment_history: List[Dict[str, Union[str, float]]] = []
     loan_status: Literal["Active", "Current", "Late", "Default", "Charged Off"] = "Current"
+
+# Initialize model
+guidance_system = AdvancedLoanGuidanceSystem()
 
 @app.get("/")
 async def root():
@@ -83,7 +58,6 @@ async def predict_loan(request: LoanRequest):
         # Create DataFrame
         loan_df = pd.DataFrame([loan_dict])
         
-        # Generate risk assessment and recommendations
         try:
             result = {
                 'risk_assessment': {
