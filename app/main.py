@@ -6,7 +6,15 @@ import joblib
 import boto3
 import os
 import time
-from app.loan_guidance import AdvancedLoanGuidanceSystem
+import sys
+from pathlib import Path
+
+# Ensure the app directory is in the Python path
+app_dir = Path(__file__).resolve().parent
+sys.path.append(str(app_dir))
+
+# Import after path setup
+from loan_guidance import AdvancedLoanGuidanceSystem
 
 app = FastAPI()
 
@@ -28,14 +36,40 @@ class LoanRequest(BaseModel):
     borrower_type: str
     sector_data: Dict
     payment_history: List[Dict] = []
-    loan_status: str  # Added this field
+    loan_status: str
 
 # Global variables
 guidance_system = None
 model_loading = False
 
+def load_model_from_s3():
+    """Load model from S3"""
+    try:
+        print("Attempting to load model from S3...")
+        s3_client = boto3.client(
+            's3',
+            aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+            aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
+            region_name=os.getenv('AWS_DEFAULT_REGION')
+        )
+        
+        local_path = '/tmp/model.joblib'
+        s3_client.download_file(
+            'virtual-herbal-garden-3d-models',
+            'models/advanced_loan_guidance_system.joblib',
+            local_path
+        )
+        
+        # Load with custom class lookup
+        model = joblib.load(local_path)
+        print("Successfully loaded model from S3")
+        return model
+    except Exception as e:
+        print(f"Error loading model from S3: {e}")
+        return None
+
 def get_model():
-    """Lazy load the model only when needed"""
+    """Get model instance"""
     global guidance_system, model_loading
     
     if guidance_system is not None:
@@ -46,33 +80,12 @@ def get_model():
         
     try:
         model_loading = True
-        print("Initializing new model instance...")
-        guidance_system = AdvancedLoanGuidanceSystem()
+        # Try to load from S3
+        guidance_system = load_model_from_s3()
         
-        # Try to load from S3 if available
-        try:
-            print("Attempting to load model from S3...")
-            s3_client = boto3.client(
-                's3',
-                aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
-                aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
-                region_name=os.getenv('AWS_DEFAULT_REGION')
-            )
-            
-            s3_client.download_file(
-                'virtual-herbal-garden-3d-models',
-                'models/advanced_loan_guidance_system.joblib',
-                '/tmp/model.joblib'
-            )
-            loaded_model = joblib.load('/tmp/model.joblib')
-            if isinstance(loaded_model, AdvancedLoanGuidanceSystem):
-                guidance_system = loaded_model
-                print("Successfully loaded model from S3")
-            else:
-                print("Loaded object is not an AdvancedLoanGuidanceSystem instance")
-        except Exception as e:
-            print(f"Warning: Could not load model from S3: {e}")
-            print("Using default model initialization")
+        if guidance_system is None:
+            print("Creating new model instance...")
+            guidance_system = AdvancedLoanGuidanceSystem()
             
         return guidance_system
     except Exception as e:
@@ -85,8 +98,7 @@ def get_model():
 async def root():
     return {
         "status": "active",
-        "message": "Loan Guidance System API is running",
-        "model_status": "initialized" if guidance_system is not None else "not initialized"
+        "message": "Loan Guidance System API is running"
     }
 
 @app.post("/analyze-loan")
@@ -99,6 +111,7 @@ async def analyze_loan(request: LoanRequest):
         guidance = model.generate_comprehensive_guidance(request.dict())
         return guidance
     except Exception as e:
+        print(f"Error processing request: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/health")
