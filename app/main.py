@@ -5,15 +5,9 @@ from typing import Dict, List, Optional
 import joblib
 import boto3
 import os
-
-# Import from the same directory
 from .loan_guidance import AdvancedLoanGuidanceSystem
 
-app = FastAPI(
-    title="Loan Guidance System API",
-    description="API for advanced loan guidance and risk assessment",
-    version="1.0.0"
-)
+app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
@@ -34,60 +28,74 @@ class LoanRequest(BaseModel):
     sector_data: Dict
     payment_history: List[Dict] = []
 
-# Initialize S3 client
-s3_client = boto3.client(
-    's3',
-    aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
-    aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
-    region_name=os.getenv('AWS_DEFAULT_REGION')
-)
-
+# Global variables
 guidance_system = None
+model_loading = False
 
-def load_model():
-    try:
-        # Initialize a new model instance first
-        model = AdvancedLoanGuidanceSystem()
+def get_model():
+    """Lazy load the model only when needed"""
+    global guidance_system, model_loading
+    
+    if guidance_system is not None:
+        return guidance_system
         
+    if model_loading:
+        return None
+        
+    try:
+        model_loading = True
+        # First create a basic model
+        guidance_system = AdvancedLoanGuidanceSystem()
+        
+        # Try to load from S3 if available
         try:
-            # Try to download from S3
+            s3_client = boto3.client(
+                's3',
+                aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+                aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
+                region_name=os.getenv('AWS_DEFAULT_REGION')
+            )
+            
             s3_client.download_file(
                 'virtual-herbal-garden-3d-models',
                 'models/advanced_loan_guidance_system.joblib',
                 '/tmp/model.joblib'
             )
-            model = joblib.load('/tmp/model.joblib')
+            guidance_system = joblib.load('/tmp/model.joblib')
         except Exception as e:
             print(f"Warning: Could not load model from S3: {e}")
-            print("Using newly initialized model instead.")
-        
-        return model
+            print("Using default model initialization")
+            
+        return guidance_system
     except Exception as e:
-        print(f"Error in load_model: {e}")
+        print(f"Error in get_model: {e}")
         return None
-
-@app.on_event("startup")
-async def startup_event():
-    global guidance_system
-    guidance_system = load_model()
+    finally:
+        model_loading = False
 
 @app.get("/")
 async def root():
-    return {"status": "active", "message": "Loan Guidance System API is running"}
+    return {
+        "status": "active",
+        "message": "Loan Guidance System API is running"
+    }
 
 @app.post("/analyze-loan")
 async def analyze_loan(request: LoanRequest):
     try:
-        if guidance_system is None:
-            guidance_system = AdvancedLoanGuidanceSystem()
-        guidance = guidance_system.generate_comprehensive_guidance(request.dict())
+        model = get_model()
+        if model is None:
+            model = AdvancedLoanGuidanceSystem()
+        
+        guidance = model.generate_comprehensive_guidance(request.dict())
         return guidance
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/health")
 async def health_check():
+    model = get_model()
     return {
         "status": "healthy",
-        "model_loaded": guidance_system is not None
+        "model_status": "loaded" if model is not None else "initializing"
     }
