@@ -1,5 +1,5 @@
 # main.py
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import Dict, List, Union, Optional
@@ -10,7 +10,8 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 import os
-from sklearn.preprocessing import StandardScaler, LabelEncoder
+import sys
+from app.loan_guidance import AdvancedLoanGuidanceSystem  # Import from your module
 
 app = FastAPI(
     title="Advanced Loan Guidance System API",
@@ -27,13 +28,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Load the model
-MODEL_PATH = Path("app/advanced_loan_guidance_system.joblib")
+# Initialize the model
 try:
-    guidance_system = joblib.load(MODEL_PATH)
+    MODEL_PATH = Path("app/advanced_loan_guidance_system.joblib")
+    if MODEL_PATH.exists():
+        guidance_system = joblib.load(MODEL_PATH)
+    else:
+        print(f"Model file not found at {MODEL_PATH}. Initializing new model.")
+        guidance_system = AdvancedLoanGuidanceSystem()
 except Exception as e:
-    print(f"Error loading model: {e}")
-    guidance_system = None
+    print(f"Error loading model: {str(e)}")
+    print("Initializing new model instance.")
+    guidance_system = AdvancedLoanGuidanceSystem()
 
 class LoanRequest(BaseModel):
     monthly_income: float = Field(..., gt=0)
@@ -47,7 +53,7 @@ class LoanRequest(BaseModel):
     payment_history: List[Dict[str, Union[str, float]]] = []
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {  # Updated from schema_extra to json_schema_extra
             "example": {
                 "monthly_income": 5000,
                 "loan_amount": 50000,
@@ -57,13 +63,7 @@ class LoanRequest(BaseModel):
                 "age": 30,
                 "borrower_type": "business",
                 "sector_data": {"business": {"years": 5, "type": "retail"}},
-                "payment_history": [
-                    {
-                        "due_date": "2024-01-15",
-                        "payment_date": "2024-01-15",
-                        "amount_paid": 1500.00
-                    }
-                ]
+                "payment_history": []
             }
         }
 
@@ -79,8 +79,6 @@ async def root():
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
-    if guidance_system is None:
-        raise HTTPException(status_code=503, detail="Model not loaded")
     return {
         "status": "healthy",
         "model_loaded": True,
@@ -89,12 +87,7 @@ async def health_check():
 
 @app.post("/predict")
 async def predict_loan(request: LoanRequest):
-    """
-    Generate loan guidance and risk assessment based on provided data
-    """
-    if guidance_system is None:
-        raise HTTPException(status_code=503, detail="Model not loaded")
-
+    """Generate loan guidance and risk assessment"""
     try:
         # Convert request to dictionary
         loan_data = request.dict()
@@ -102,11 +95,10 @@ async def predict_loan(request: LoanRequest):
         # Convert to DataFrame with single row
         df = pd.DataFrame([loan_data])
         
-        # Generate comprehensive guidance using the model
+        # Generate guidance
         guidance = guidance_system.generate_comprehensive_guidance(df)
         
-        # Add timestamp and request summary
-        response = {
+        return {
             "status": "success",
             "timestamp": datetime.now().isoformat(),
             "request_summary": {
@@ -116,70 +108,11 @@ async def predict_loan(request: LoanRequest):
             },
             "guidance": guidance
         }
-        
-        return response
-
     except Exception as e:
         raise HTTPException(
             status_code=400,
             detail=f"Error processing request: {str(e)}"
         )
-
-@app.post("/batch-predict")
-async def batch_predict(requests: List[LoanRequest], background_tasks: BackgroundTasks):
-    """
-    Process multiple loan requests in batch
-    """
-    if guidance_system is None:
-        raise HTTPException(status_code=503, detail="Model not loaded")
-
-    try:
-        # Convert all requests to DataFrame
-        loan_data_list = [request.dict() for request in requests]
-        df = pd.DataFrame(loan_data_list)
-        
-        # Process each request
-        results = []
-        for _, row in df.iterrows():
-            guidance = guidance_system.generate_comprehensive_guidance(pd.DataFrame([row]))
-            results.append(guidance)
-        
-        return {
-            "status": "success",
-            "timestamp": datetime.now().isoformat(),
-            "results": results
-        }
-
-    except Exception as e:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Error processing batch request: {str(e)}"
-        )
-
-@app.get("/model-info")
-async def get_model_info():
-    """
-    Get information about the loaded model
-    """
-    if guidance_system is None:
-        raise HTTPException(status_code=503, detail="Model not loaded")
-    
-    return {
-        "model_type": "Advanced Loan Guidance System",
-        "features_expected": [
-            "monthly_income",
-            "loan_amount",
-            "interest_rate",
-            "loan_term_months",
-            "credit_score",
-            "age",
-            "borrower_type",
-            "sector_data",
-            "payment_history"
-        ],
-        "risk_levels": ["Low Risk", "Moderate Risk", "High Risk"],
-        "supported_borrower_types": ["business", "student", "farmer"]
-    }
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
@@ -187,6 +120,5 @@ if __name__ == "__main__":
         "main:app",
         host="0.0.0.0",
         port=port,
-        reload=True,
-        workers=1
+        reload=True
     )
