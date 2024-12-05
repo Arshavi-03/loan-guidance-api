@@ -5,13 +5,9 @@ from typing import Dict, List, Optional
 import joblib
 import boto3
 import os
-import sys
-from pathlib import Path
 
-# Add the current directory to Python path
-sys.path.append(str(Path(__file__).parent))
-
-from loan_guidance import AdvancedLoanGuidanceSystem
+# Import from the same directory
+from .loan_guidance import AdvancedLoanGuidanceSystem
 
 app = FastAPI(
     title="Loan Guidance System API",
@@ -19,7 +15,6 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -47,24 +42,30 @@ s3_client = boto3.client(
     region_name=os.getenv('AWS_DEFAULT_REGION')
 )
 
-# Global variable for guidance system
 guidance_system = None
 
 def load_model():
     try:
-        # Download model from S3
-        s3_client.download_file(
-            'virtual-herbal-garden-3d-models',
-            'models/advanced_loan_guidance_system.joblib',
-            '/tmp/model.joblib'
-        )
-        return joblib.load('/tmp/model.joblib')
+        # Initialize a new model instance first
+        model = AdvancedLoanGuidanceSystem()
+        
+        try:
+            # Try to download from S3
+            s3_client.download_file(
+                'virtual-herbal-garden-3d-models',
+                'models/advanced_loan_guidance_system.joblib',
+                '/tmp/model.joblib'
+            )
+            model = joblib.load('/tmp/model.joblib')
+        except Exception as e:
+            print(f"Warning: Could not load model from S3: {e}")
+            print("Using newly initialized model instead.")
+        
+        return model
     except Exception as e:
-        print(f"Error loading model from S3: {e}")
-        # Initialize a new model if loading fails
-        return AdvancedLoanGuidanceSystem()
+        print(f"Error in load_model: {e}")
+        return None
 
-# Load model on startup
 @app.on_event("startup")
 async def startup_event():
     global guidance_system
@@ -90,7 +91,3 @@ async def health_check():
         "status": "healthy",
         "model_loaded": guidance_system is not None
     }
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
