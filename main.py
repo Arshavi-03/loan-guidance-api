@@ -5,6 +5,7 @@ from typing import Dict, List, Union
 import logging
 from pathlib import Path
 import pandas as pd
+import numpy as np
 from datetime import datetime
 import os
 import sys
@@ -18,7 +19,6 @@ from app.loan_guidance import AdvancedLoanGuidanceSystem
 
 app = FastAPI()
 
-# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -73,20 +73,44 @@ async def health_check():
 @app.post("/predict")
 async def predict_loan(request: LoanRequest):
     try:
-        # Convert request to DataFrame
-        loan_data = pd.DataFrame([request.dict()])
+        # Convert request to dictionary
+        loan_data = request.dict()
         
-        # Generate guidance
-        guidance = guidance_system.generate_comprehensive_guidance(loan_data)
+        # Create DataFrame and reshape for model
+        df = pd.DataFrame([loan_data])
         
-        return {
-            "status": "success",
-            "timestamp": datetime.now().isoformat(),
-            "guidance": guidance
-        }
+        # Preprocess the data before passing to guidance system
+        processed_data = df.copy()
+        
+        # Ensure sector_data is in string format
+        processed_data['sector_data'] = processed_data['sector_data'].apply(str)
+        
+        # Convert payment_history to string if present
+        if 'payment_history' in processed_data.columns:
+            processed_data['payment_history'] = processed_data['payment_history'].apply(str)
+        
+        try:
+            # Generate guidance with processed data
+            guidance = guidance_system.generate_comprehensive_guidance(processed_data)
+            
+            return {
+                "status": "success",
+                "timestamp": datetime.now().isoformat(),
+                "guidance": guidance
+            }
+        except Exception as e:
+            logger.error(f"Error in guidance generation: {str(e)}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Error in guidance generation: {str(e)}"
+            )
+            
     except Exception as e:
         logger.error(f"Prediction error: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(
+            status_code=400,
+            detail=f"Error processing request: {str(e)}"
+        )
 
 if __name__ == "__main__":
     import uvicorn
