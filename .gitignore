@@ -31,9 +31,7 @@ ENV/
 *.swp
 *.swo
 
-# Model files
-*.joblib
-*.pkl
+
 
 # Environment variables
 .env
