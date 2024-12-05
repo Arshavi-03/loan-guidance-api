@@ -5,7 +5,8 @@ from typing import Dict, List, Optional
 import joblib
 import boto3
 import os
-from .loan_guidance import AdvancedLoanGuidanceSystem
+import time
+from app.loan_guidance import AdvancedLoanGuidanceSystem
 
 app = FastAPI()
 
@@ -44,11 +45,12 @@ def get_model():
         
     try:
         model_loading = True
-        # First create a basic model
+        print("Initializing new model instance...")
         guidance_system = AdvancedLoanGuidanceSystem()
         
         # Try to load from S3 if available
         try:
+            print("Attempting to load model from S3...")
             s3_client = boto3.client(
                 's3',
                 aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
@@ -61,7 +63,12 @@ def get_model():
                 'models/advanced_loan_guidance_system.joblib',
                 '/tmp/model.joblib'
             )
-            guidance_system = joblib.load('/tmp/model.joblib')
+            loaded_model = joblib.load('/tmp/model.joblib')
+            if isinstance(loaded_model, AdvancedLoanGuidanceSystem):
+                guidance_system = loaded_model
+                print("Successfully loaded model from S3")
+            else:
+                print("Loaded object is not an AdvancedLoanGuidanceSystem instance")
         except Exception as e:
             print(f"Warning: Could not load model from S3: {e}")
             print("Using default model initialization")
@@ -77,7 +84,8 @@ def get_model():
 async def root():
     return {
         "status": "active",
-        "message": "Loan Guidance System API is running"
+        "message": "Loan Guidance System API is running",
+        "model_status": "initialized" if guidance_system is not None else "not initialized"
     }
 
 @app.post("/analyze-loan")
@@ -85,7 +93,7 @@ async def analyze_loan(request: LoanRequest):
     try:
         model = get_model()
         if model is None:
-            model = AdvancedLoanGuidanceSystem()
+            raise HTTPException(status_code=503, detail="Model not available")
         
         guidance = model.generate_comprehensive_guidance(request.dict())
         return guidance
@@ -97,5 +105,6 @@ async def health_check():
     model = get_model()
     return {
         "status": "healthy",
-        "model_status": "loaded" if model is not None else "initializing"
+        "model_status": "loaded" if model is not None else "initializing",
+        "timestamp": time.time()
     }
