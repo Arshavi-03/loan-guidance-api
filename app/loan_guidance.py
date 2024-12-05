@@ -1,10 +1,9 @@
 
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, LabelEncoder
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingRegressor
-from sklearn.metrics import accuracy_score, precision_recall_fscore_support
+from sklearn.ensemble import RandomForestClassifier
 from xgboost import XGBClassifier, XGBRegressor
 import joblib
 from datetime import datetime, timedelta
@@ -17,7 +16,6 @@ class AdvancedLoanGuidanceSystem:
         self.payment_predictor = None
         self.feature_scaler = StandardScaler()
         self.label_encoders = {}
-
     def safe_divide(self, a, b):
         """Safe division that handles zeros and infinities"""
         if isinstance(b, (int, float)):
