@@ -17,29 +17,40 @@ venv\Scripts\activate  # Windows
 pip install -r requirements.txt
 ```
 
-3. Configure environment variables:
-Create a `.env` file with:
-```
-AWS_ACCESS_KEY_ID=your_access_key
-AWS_SECRET_ACCESS_KEY=your_secret_key
-AWS_DEFAULT_REGION=your_region
-```
-
-4. Run the application:
+3. Run the application:
 ```bash
 uvicorn main:app --reload
 ```
 
 ## API Endpoints
 
-- GET `/`: Health check
-- POST `/analyze-loan`: Analyze loan application
-- GET `/health`: System health status
+- GET `/`: Root endpoint - API status
+- GET `/health`: System health check
+- POST `/predict`: Generate loan guidance and risk assessment
 
 ## Documentation
 
 API documentation available at `/docs` when running locally.
 
+## Testing the API
+
+Example curl command:
+```bash
+curl -X POST http://localhost:8000/predict \
+-H "Content-Type: application/json" \
+-d '{
+    "monthly_income": 5000,
+    "loan_amount": 50000,
+    "interest_rate": 5.5,
+    "loan_term_months": 36,
+    "credit_score": 720,
+    "age": 30,
+    "borrower_type": "business",
+    "sector_data": {"business": {"years": 5, "type": "retail"}},
+    "payment_history": []
+}'
+```
+
 ## Deployment
 
-This application is configured for deployment on Render.com with AWS S3 for model storage.
+This application is configured for deployment on Render.com.

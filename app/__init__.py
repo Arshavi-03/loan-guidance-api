@@ -1,4 +1,7 @@
+# app/__init__.py
+"""
+Initialize the loan guidance package
+"""
 from .loan_guidance import AdvancedLoanGuidanceSystem
-from .aws_utils import S3Handler
 
-__all__ = ['AdvancedLoanGuidanceSystem', 'S3Handler']
+__all__ = ['AdvancedLoanGuidanceSystem']
