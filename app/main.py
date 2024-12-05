@@ -9,7 +9,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from loan_guidance import AdvancedLoanGuidanceSystem
+# Change this line
+from .loan_guidance import AdvancedLoanGuidanceSystem  # Using relative import
 
 app = FastAPI()
 
