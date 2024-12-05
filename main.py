@@ -1,26 +1,19 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from typing import Dict, List, Union
+from typing import Dict, List, Union, Literal
 import logging
-from pathlib import Path
 import pandas as pd
 import numpy as np
 from datetime import datetime
 import os
 
-# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Import the model class
 from app.loan_guidance import AdvancedLoanGuidanceSystem
 
-app = FastAPI(
-    title="Advanced Loan Guidance System API",
-    description="API for loan risk assessment and guidance using machine learning",
-    version="1.0.0"
-)
+app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
@@ -43,88 +36,57 @@ class LoanRequest(BaseModel):
     borrower_type: str
     sector_data: Dict[str, Dict[str, Union[str, int, float]]]
     payment_history: List[Dict[str, Union[str, float]]] = []
-    loan_status: str = "Active"  # Added to match your model's requirements
+    loan_status: Literal["Active", "Current", "Late", "Default", "Charged Off"] = "Current"
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "monthly_income": 5000,
-                "loan_amount": 50000,
-                "interest_rate": 5.5,
-                "loan_term_months": 36,
-                "credit_score": 720,
-                "age": 30,
-                "borrower_type": "business",
-                "sector_data": {
-                    "business": {
-                        "years": 5,
-                        "type": "retail"
-                    }
-                },
-                "payment_history": [
-                    {
-                        "due_date": "2024-01-15",
-                        "payment_date": "2024-01-15",
-                        "amount_paid": 1500.00
-                    }
-                ],
-                "loan_status": "Active"
-            }
-        }
-
-@app.get("/")
-async def root():
-    return {
-        "status": "online",
-        "message": "Advanced Loan Guidance System API",
-        "documentation": "/docs"
+def prepare_loan_data(loan_request: dict) -> pd.DataFrame:
+    """Prepare loan data in the correct format"""
+    processed_data = {
+        'monthly_income': float(loan_request['monthly_income']),
+        'loan_amount': float(loan_request['loan_amount']),
+        'interest_rate': float(loan_request['interest_rate']),
+        'loan_term_months': int(loan_request['loan_term_months']),
+        'credit_score': int(loan_request['credit_score']),
+        'age': int(loan_request['age']),
+        'borrower_type': str(loan_request['borrower_type']),
+        'sector_data': str(loan_request['sector_data']),
+        'payment_history': str(loan_request['payment_history']),
+        'loan_status': str(loan_request['loan_status'])
     }
-
-@app.get("/health")
-async def health_check():
-    return {
-        "status": "healthy",
-        "timestamp": datetime.now().isoformat()
-    }
+    return pd.DataFrame([processed_data])
 
 @app.post("/predict")
 async def predict_loan(request: LoanRequest):
     try:
-        # Convert request to dictionary
-        loan_data = request.dict()
-        logger.info("Processing loan request...")
+        # Convert request to dictionary and preprocess
+        loan_data = prepare_loan_data(request.dict())
         
-        # Create DataFrame with the loan data
-        df = pd.DataFrame([loan_data])
+        # First, preprocess the data using the model's preprocess_data method
+        processed_data = guidance_system.preprocess_data(loan_data)
         
-        try:
-            # Generate guidance
-            guidance = guidance_system.generate_comprehensive_guidance(df)
-            
-            return {
-                "status": "success",
-                "timestamp": datetime.now().isoformat(),
-                "request_summary": {
-                    "loan_amount": loan_data["loan_amount"],
-                    "term_months": loan_data["loan_term_months"],
-                    "monthly_income": loan_data["monthly_income"]
-                },
-                "guidance": guidance
-            }
-            
-        except Exception as e:
-            logger.error(f"Error in guidance generation: {str(e)}")
-            raise HTTPException(
-                status_code=400,
-                detail=f"Error in generating guidance: {str(e)}"
-            )
-            
+        # Generate guidance using the preprocessed data
+        guidance = guidance_system.generate_comprehensive_guidance(processed_data)
+        
+        return {
+            "status": "success",
+            "timestamp": datetime.now().isoformat(),
+            "request_summary": {
+                "loan_amount": request.loan_amount,
+                "term_months": request.loan_term_months,
+                "monthly_income": request.monthly_income
+            },
+            "guidance": guidance
+        }
     except Exception as e:
         logger.error(f"Error processing request: {str(e)}")
-        raise HTTPException(
-            status_code=400,
-            detail=f"Error processing request: {str(e)}"
-        )
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/")
+async def root():
+    return {"status": "online", "message": "Loan Guidance API"}
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
 
 if __name__ == "__main__":
     import uvicorn
