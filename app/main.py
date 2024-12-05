@@ -1,17 +1,13 @@
 import os
-import sys
 import time
-import joblib
 import boto3
+import joblib
+import numpy as np
+import pandas as pd
+from typing import Dict, List
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Dict, List, Optional
-
-# Add the correct import path
-current_dir = os.path.dirname(os.path.abspath(__file__))
-if current_dir not in sys.path:
-    sys.path.append(current_dir)
 
 from loan_guidance import AdvancedLoanGuidanceSystem
 
@@ -39,21 +35,16 @@ class LoanRequest(BaseModel):
 
 # Global variables
 guidance_system = None
-model_loading = False
 
 def get_model():
     """Get model instance"""
-    global guidance_system, model_loading
+    global guidance_system
     
     if guidance_system is not None:
         return guidance_system
         
-    if model_loading:
-        return None
-        
     try:
-        model_loading = True
-        # Create new instance first
+        # Create new model instance
         guidance_system = AdvancedLoanGuidanceSystem()
         
         try:
@@ -65,7 +56,7 @@ def get_model():
                 region_name=os.getenv('AWS_REGION')
             )
             
-            # Load model state from S3
+            # Download model
             local_path = '/tmp/model.joblib'
             s3_client.download_file(
                 'virtual-herbal-garden-3d-models',
@@ -73,23 +64,54 @@ def get_model():
                 local_path
             )
             
-            # Load the state into the new instance
-            loaded_state = joblib.load(local_path)
-            if isinstance(loaded_state, AdvancedLoanGuidanceSystem):
-                guidance_system = loaded_state
-                print("Successfully loaded model from S3")
+            # Load model
+            guidance_system = joblib.load(local_path)
+            print("Successfully loaded model from S3")
             
         except Exception as e:
             print(f"Warning: Could not load model from S3: {e}")
-            print("Using new model instance")
-        
+            print("Training new model instance...")
+            # Create minimal training data
+            train_data = pd.DataFrame([
+                {
+                    'monthly_income': 5000,
+                    'loan_amount': 50000,
+                    'interest_rate': 10.5,
+                    'loan_term_months': 24,
+                    'credit_score': 700,
+                    'age': 35,
+                    'borrower_type': 'business',
+                    'loan_status': 'Charged Off',
+                    'sector_data': {'business': {'years': 5, 'type': 'retail'}},
+                    'payment_history': []
+                },
+                {
+                    'monthly_income': 6000,
+                    'loan_amount': 40000,
+                    'interest_rate': 9.5,
+                    'loan_term_months': 36,
+                    'credit_score': 750,
+                    'age': 40,
+                    'borrower_type': 'business',
+                    'loan_status': 'Current',
+                    'sector_data': {'business': {'years': 8, 'type': 'service'}},
+                    'payment_history': []
+                }
+            ])
+            
+            # Process and train
+            processed_data = guidance_system.preprocess_data(train_data)
+            X = guidance_system.prepare_features(processed_data)
+            y_risk = (processed_data['loan_status'] == 'Charged Off').astype(int)
+            y_payment = train_data['loan_amount'] / train_data['loan_term_months']
+            
+            guidance_system.train_models(X, y_risk, y_payment)
+            print("New model instance trained successfully")
+            
         return guidance_system
-        
     except Exception as e:
         print(f"Error in get_model: {e}")
         return None
-    finally:
-        model_loading = False
 
 @app.get("/")
 async def root():
