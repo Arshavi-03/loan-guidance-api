@@ -3,6 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Dict, List
 import joblib
+import os
+from pathlib import Path
 from .loan_guidance import AdvancedLoanGuidanceSystem
 
 app = FastAPI()
@@ -27,8 +29,18 @@ class LoanRequest(BaseModel):
     payment_history: List[Dict] = []
     loan_status: str
 
-# Load model directly from local file
-guidance_system = joblib.load('app/advanced_loan_guidance_system.joblib')
+# Get the absolute path to the model file
+BASE_DIR = Path(__file__).resolve().parent
+MODEL_PATH = BASE_DIR / 'advanced_loan_guidance_system.joblib'
+
+# Load model from the correct path
+try:
+    print(f"Attempting to load model from: {MODEL_PATH}")
+    guidance_system = joblib.load(MODEL_PATH)
+    print("Model loaded successfully")
+except Exception as e:
+    print(f"Error loading model: {e}")
+    raise
 
 @app.post("/analyze-loan")
 async def analyze_loan(request: LoanRequest):
@@ -40,4 +52,8 @@ async def analyze_loan(request: LoanRequest):
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "model_loaded": guidance_system is not None}
+    return {
+        "status": "healthy",
+        "model_loaded": guidance_system is not None,
+        "model_path": str(MODEL_PATH)
+    }
