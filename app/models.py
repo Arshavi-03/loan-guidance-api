@@ -58,7 +58,7 @@ class PaymentEntry(BaseModel):
     total_interest_paid: float
     years_to_payoff: Optional[float] = None
     months_to_payoff: Optional[int] = None
-
+    
 class LoanResponse(BaseModel):
     """Response model for loan analysis"""
     analysis: AnalysisResult

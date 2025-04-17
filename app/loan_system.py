@@ -1,4 +1,4 @@
-# app/loan_system.py - Replace with this simpler version
+# app/loan_system.py - Fixed version
 
 import os
 import math
@@ -279,7 +279,9 @@ class LoanSystem:
             
             schedule.append(payment)
         
-        # Add summary
+        # Add summary - FIX: Convert float to int for months_to_payoff
+        estimated_months = n_payments - (extra_payment * n_payments / (loan_amount / 3)) if extra_payment > 0 else n_payments
+        
         summary = {
             "payment_number": "summary",
             "payment_date": None,
@@ -289,7 +291,7 @@ class LoanSystem:
             "remaining_balance": 0,
             "total_interest_paid": round(monthly_payment * n_payments - loan_amount, 2),
             "years_to_payoff": loan_term_years - (extra_payment * loan_term_years / (loan_amount / 3)) if extra_payment > 0 else loan_term_years,
-            "months_to_payoff": n_payments - (extra_payment * n_payments / (loan_amount / 3)) if extra_payment > 0 else n_payments
+            "months_to_payoff": int(estimated_months)  # Convert to int to fix the validation error
         }
         
         schedule.append(summary)
